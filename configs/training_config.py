@@ -8,15 +8,22 @@ from dataclasses import dataclass
 from typing import Dict, Any
 
 @dataclass
-class ModelConfig:
-    """Transformer model configuration"""
+class TrainingModelConfig:
+    """Transformer model configuration for training"""
     # Architecture (200M parameters to match Metamon)
-    hidden_dim: int = 1024
+    hidden_size: int = 1024  # Renamed from hidden_dim to match model
     num_layers: int = 24  
     num_heads: int = 16
-    sequence_length: int = 2048
+    intermediate_size: int = 4096  # FFN hidden size
+    max_position_embeddings: int = 2048  # Renamed from sequence_length
     vocab_size: int = 50000  # Action + observation vocabulary
     action_vocab_size: int = 10  # 4 moves + 6 switches for Pokemon battles
+    
+    # Vocabulary sizes to match model expectations
+    species_vocab_size: int = 1025
+    move_vocab_size: int = 850
+    item_vocab_size: int = 400
+    ability_vocab_size: int = 300
     
     # Dropout and regularization
     dropout: float = 0.1
@@ -29,12 +36,15 @@ class ModelConfig:
     def get_param_count(self) -> int:
         """Estimate parameter count"""
         # Rough calculation for transformer parameters
-        embed_params = self.vocab_size * self.hidden_dim
+        embed_params = self.vocab_size * self.hidden_size
         layer_params = self.num_layers * (
-            4 * self.hidden_dim * self.hidden_dim +  # Attention
-            8 * self.hidden_dim * self.hidden_dim    # FFN
+            4 * self.hidden_size * self.hidden_size +  # Attention
+            8 * self.hidden_size * self.hidden_size    # FFN
         )
         return embed_params + layer_params
+    
+    # Add missing attributes with defaults for compatibility
+    initializer_range: float = 0.02
 
 @dataclass  
 class TrainingConfig:
@@ -168,7 +178,7 @@ class InferenceConfig:
 class Config:
     """Main configuration class"""
     def __init__(self):
-        self.model = ModelConfig()
+        self.model = TrainingModelConfig()
         self.training = TrainingConfig()
         self.offline_rl = OfflineRLConfig()
         self.data = DataConfig()

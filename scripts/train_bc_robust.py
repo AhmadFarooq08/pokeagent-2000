@@ -65,8 +65,8 @@ class PokemonBattleDataset(Dataset):
         # Create dummy encoded state
         encoded_state = self.encoder.encode_battle_state(None)
         
-        # Random target action
-        target_action = torch.randint(0, CONFIG.model.action_vocab_size, (1,)).long()
+        # Random target action (use model's action vocab size)
+        target_action = torch.randint(0, 10, (1,)).long()  # 4 moves + 6 switches
         
         return {
             'input_ids': encoded_state,
@@ -486,7 +486,7 @@ def main():
     except:
         logger.warning("Failed to initialize wandb, continuing without logging")
     
-    # Create model
+    # Create model using the actual ModelConfig from metamon_transformer
     model_config = ModelConfig()
     model = MetamonTransformer(model_config)
     logger.info(f"Model created: {model.get_parameter_count():,} parameters")
