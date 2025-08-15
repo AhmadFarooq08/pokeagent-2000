@@ -1,0 +1,59 @@
+Great Tusk @ Heavy-Duty Boots
+Ability: Protosynthesis
+Tera Type: Water
+EVs: 252 HP / 4 Atk / 252 Spe
+Jolly Nature
+- Rapid Spin
+- Headlong Rush
+- Close Combat
+- Knock Off
+
+Gholdengo @ Leftovers
+Ability: Good as Gold
+Tera Type: Flying
+EVs: 252 HP / 252 Def / 4 SpA
+Bold Nature
+- Make It Rain
+- Shadow Ball
+- Nasty Plot
+- Recover
+
+Kingambit @ Black Glasses
+Ability: Supreme Overlord
+Tera Type: Dark
+EVs: 252 Atk / 4 SpD / 252 Spe
+Adamant Nature
+- Kowtow Cleave
+- Sucker Punch
+- Swords Dance
+- Iron Head
+
+Dragapult @ Choice Specs
+Ability: Infiltrator
+Tera Type: Ghost
+EVs: 4 Def / 252 SpA / 252 Spe
+Timid Nature
+- Shadow Ball
+- Draco Meteor
+- Flamethrower
+- U-turn
+
+Gliscor @ Toxic Orb
+Ability: Poison Heal
+Tera Type: Water
+EVs: 244 HP / 176 Def / 88 Spe
+Impish Nature
+- Stealth Rock
+- Earthquake
+- U-turn
+- Protect
+
+Raging Bolt @ Booster Energy
+Ability: Protosynthesis
+Tera Type: Electric
+EVs: 4 Def / 252 SpA / 252 Spe
+Timid Nature
+- Thunderclap
+- Thunderbolt
+- Dragon Pulse
+- Calm Mind
