@@ -16,6 +16,7 @@ class ModelConfig:
     num_heads: int = 16
     sequence_length: int = 2048
     vocab_size: int = 50000  # Action + observation vocabulary
+    action_vocab_size: int = 10  # 4 moves + 6 switches for Pokemon battles
     
     # Dropout and regularization
     dropout: float = 0.1
