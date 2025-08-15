@@ -90,7 +90,9 @@ def collate_fn(batch: List[Dict]) -> Dict:
             input_ids[key].append(value)
     
     for key in input_ids:
-        input_ids[key] = torch.stack(input_ids[key], dim=0)
+        # Remove extra batch dimension from individual samples before stacking
+        tensors = [tensor.squeeze(0) if tensor.dim() > 1 else tensor for tensor in input_ids[key]]
+        input_ids[key] = torch.stack(tensors, dim=0)
     
     labels = torch.stack(labels, dim=0).squeeze(-1)
     win_labels = torch.stack(win_labels, dim=0)
