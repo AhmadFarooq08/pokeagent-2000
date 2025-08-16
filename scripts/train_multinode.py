@@ -34,6 +34,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 # Import project modules
 from models.metamon_transformer import MetamonTransformer, ModelConfig
 from data.real_pokemon_dataset import RealPokemonDataset, DatasetConfig, collate_real_data
+from data.mock_pokemon_dataset import MockPokemonDataset, collate_mock_data
 from configs.training_config import TrainingConfig
 
 # Setup logging
@@ -247,13 +248,17 @@ class DistributedTrainer:
             use_memory_mapping=True
         )
         
-        # Use mock data if specified
+        # Create datasets - separate classes for mock vs real data
         if self.config.mock_data or self.config.dry_run:
-            dataset_config.data_dir = "mock_data"  # Will trigger mock data creation
-        
-        # Create datasets
-        train_dataset = RealPokemonDataset(dataset_config, split='train')
-        val_dataset = RealPokemonDataset(dataset_config, split='val')
+            logger.info("Using MOCK datasets for testing")
+            train_dataset = MockPokemonDataset(num_samples=10000, split='train')
+            val_dataset = MockPokemonDataset(num_samples=2000, split='val')
+            collate_fn = collate_mock_data
+        else:
+            logger.info("Using REAL Pokemon battle datasets")
+            train_dataset = RealPokemonDataset(dataset_config, split='train')
+            val_dataset = RealPokemonDataset(dataset_config, split='val')
+            collate_fn = collate_real_data
         
         # Create distributed samplers
         train_sampler = DistributedSampler(
@@ -277,7 +282,7 @@ class DistributedTrainer:
             sampler=train_sampler,
             num_workers=min(4, os.cpu_count() // self.config.gpus_per_node),
             pin_memory=True,
-            collate_fn=collate_real_data,
+            collate_fn=collate_fn,
             persistent_workers=True,
             prefetch_factor=2
         )
@@ -288,7 +293,7 @@ class DistributedTrainer:
             sampler=val_sampler,
             num_workers=min(2, os.cpu_count() // self.config.gpus_per_node),
             pin_memory=True,
-            collate_fn=collate_real_data,
+            collate_fn=collate_fn,
             persistent_workers=True
         )
         

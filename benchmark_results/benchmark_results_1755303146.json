@@ -1,0 +1,43 @@
+{
+  "timestamp": 1755303146.0538685,
+  "comprehensive": false,
+  "system_info": {
+    "cpu_count": 20,
+    "memory_gb": 31.2,
+    "python_version": "3.12.11 (main, Jun  4 2025, 08:56:18) [GCC 11.4.0]"
+  },
+  "mock_data_generation": {
+    "team_generation": {
+      "time_per_team_ms": 0.019,
+      "teams_per_second": 53793.8
+    },
+    "replay_generation": {
+      "time_per_replay_ms": 0.049,
+      "replays_per_second": 20228.1
+    },
+    "file_creation": {
+      "time_for_100_files_sec": 0.019,
+      "files_per_second": 5202.4
+    },
+    "dataset_creation": {
+      "time_sec": 0.042,
+      "samples_per_second": 23873.5
+    },
+    "benchmark_time_sec": 0.071
+  },
+  "replay_parsing": {
+    "replays_processed": 100,
+    "total_samples": 2412,
+    "parsing_time_sec": 0.034,
+    "replays_per_second": 2972.7,
+    "samples_per_second": 71702.6,
+    "avg_samples_per_replay": 24.1,
+    "benchmark_time_sec": 0.093
+  },
+  "dataset_loading": {
+    "error": "No module named 'torch'"
+  },
+  "memory_usage": {
+    "error": "No module named 'torch'"
+  }
+}

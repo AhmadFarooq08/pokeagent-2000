@@ -135,23 +135,38 @@ class RealPokemonDataset(Dataset):
         """Load indices of all available samples"""
         indices = []
         
-        # Find all data files
-        data_files = list(self.data_dir.glob("*.pkl"))
+        # Find all data files - support both JSON and PKL formats
+        json_files = list(self.data_dir.glob("*.json"))
+        pkl_files = list(self.data_dir.glob("*.pkl"))
+        data_files = json_files + pkl_files
         
         if not data_files:
-            logger.warning("No data files found, using mock data")
-            return self._create_mock_indices()
+            logger.error(f"No data files found in {self.data_dir}")
+            logger.error("Available files: " + str(list(self.data_dir.glob("*"))))
+            raise FileNotFoundError(f"No training data found in {self.data_dir}")
         
         # Load sample indices from each file
         for data_file in data_files:
             try:
-                # For pickle files, we need to load to get count
-                # In production, would maintain separate index files
-                with open(data_file, 'rb') as f:
-                    samples = pickle.load(f)
-                    
-                for i, sample in enumerate(samples):
-                    indices.append((str(data_file), i))
+                if data_file.suffix == '.pkl':
+                    # For pickle files, we need to load to get count
+                    with open(data_file, 'rb') as f:
+                        samples = pickle.load(f)
+                        
+                    for i, sample in enumerate(samples):
+                        indices.append((str(data_file), i))
+                        
+                elif data_file.suffix == '.json':
+                    # For JSON files, load and count
+                    with open(data_file, 'r') as f:
+                        data = json.load(f)
+                        
+                    if isinstance(data, list):
+                        for i, sample in enumerate(data):
+                            indices.append((str(data_file), i))
+                    else:
+                        # Single sample file
+                        indices.append((str(data_file), 0))
                     
             except Exception as e:
                 logger.warning(f"Failed to load indices from {data_file}: {e}")
@@ -159,33 +174,6 @@ class RealPokemonDataset(Dataset):
         logger.info(f"Loaded {len(indices)} sample indices")
         return indices
     
-    def _create_mock_indices(self) -> List[Tuple[str, int]]:
-        """Create mock indices for testing"""
-        # Create mock data if no real data available
-        logger.info("Creating mock data indices")
-        
-        try:
-            # Import mock data generator
-            sys.path.append(str(Path(__file__).parent.parent))
-            from tests.mock_data import MockDataGenerator
-            
-            generator = MockDataGenerator()
-            mock_dir = generator.create_mock_processed_dataset(
-                num_samples=self.config.max_samples or 10000,
-                output_dir=self.data_dir
-            )
-            
-            # Return indices for mock data
-            mock_file = mock_dir / "training_data.pkl"
-            if mock_file.exists():
-                with open(mock_file, 'rb') as f:
-                    samples = pickle.load(f)
-                return [(str(mock_file), i) for i in range(len(samples))]
-            
-        except Exception as e:
-            logger.error(f"Failed to create mock data: {e}")
-        
-        return []
     
     def _filter_samples(self, indices: List[Tuple[str, int]]) -> List[Tuple[str, int]]:
         """Filter samples based on configuration"""
@@ -260,18 +248,44 @@ class RealPokemonDataset(Dataset):
             return cached_sample
         
         try:
-            with open(file_path, 'rb') as f:
-                samples = pickle.load(f)
-                
-            if sample_idx < len(samples):
-                sample = samples[sample_idx]
-                
-                # Cache the sample
-                self.cache.put(cache_key, sample)
-                
-                return sample
+            file_path_obj = Path(file_path)
+            
+            if file_path_obj.suffix == '.pkl':
+                # Load from pickle file
+                with open(file_path, 'rb') as f:
+                    samples = pickle.load(f)
+                    
+                if sample_idx < len(samples):
+                    sample = samples[sample_idx]
+                    self.cache.put(cache_key, sample)
+                    return sample
+                else:
+                    logger.warning(f"Sample index {sample_idx} out of range for {file_path}")
+                    return None
+                    
+            elif file_path_obj.suffix == '.json':
+                # Load from JSON file
+                with open(file_path, 'r') as f:
+                    data = json.load(f)
+                    
+                if isinstance(data, list):
+                    if sample_idx < len(data):
+                        sample = data[sample_idx]
+                        self.cache.put(cache_key, sample)
+                        return sample
+                    else:
+                        logger.warning(f"Sample index {sample_idx} out of range for {file_path}")
+                        return None
+                else:
+                    # Single sample file
+                    if sample_idx == 0:
+                        self.cache.put(cache_key, data)
+                        return data
+                    else:
+                        logger.warning(f"Sample index {sample_idx} invalid for single-sample file {file_path}")
+                        return None
             else:
-                logger.warning(f"Sample index {sample_idx} out of range for {file_path}")
+                logger.error(f"Unsupported file format: {file_path}")
                 return None
                 
         except Exception as e:
