@@ -379,23 +379,53 @@ class DistributedTrainer:
         return None
     
     def train_step(self, batch: Dict[str, torch.Tensor]) -> Dict[str, float]:
-        """Execute single training step"""
+        """Execute single training step with offline RL loss"""
         self.model.train()
         
         # Move batch to device
         input_ids = {k: v.to(self.device, non_blocking=True) 
                     for k, v in batch['input_ids'].items()}
         labels = batch['labels'].to(self.device, non_blocking=True)
+        rewards = batch['rewards'].to(self.device, non_blocking=True)  # NOW USING REWARDS!
         
-        # Forward pass
+        # Forward pass - get BOTH outputs
         if self.config.use_amp:
             with autocast():
                 outputs = self.model(input_ids)
-                loss = nn.functional.cross_entropy(outputs['policy_logits'], labels)
+                policy_logits = outputs['policy_logits']
+                values = outputs['value']
+                
+                # 1. Value loss - train value head to predict rewards
+                value_loss = nn.functional.mse_loss(values, rewards)
+                
+                # 2. Compute advantages for action weighting
+                with torch.no_grad():
+                    advantages = rewards - values.detach()
+                    # Metamon's "Binary" variant - amplify winning actions
+                    weights = torch.where(advantages > 0, 1.0, 0.2)
+                
+                # 3. Weighted policy loss
+                policy_loss = nn.functional.cross_entropy(policy_logits, labels, reduction='none')
+                policy_loss = (policy_loss * weights).mean()
+                
+                # 4. Combined loss
+                loss = policy_loss + 0.5 * value_loss
                 loss = loss / self.config.gradient_accumulation_steps
         else:
             outputs = self.model(input_ids)
-            loss = nn.functional.cross_entropy(outputs['policy_logits'], labels)
+            policy_logits = outputs['policy_logits']
+            values = outputs['value']
+            
+            # Same losses without autocast
+            value_loss = nn.functional.mse_loss(values, rewards)
+            with torch.no_grad():
+                advantages = rewards - values.detach()
+                weights = torch.where(advantages > 0, 1.0, 0.2)
+            
+            policy_loss = nn.functional.cross_entropy(policy_logits, labels, reduction='none')
+            policy_loss = (policy_loss * weights).mean()
+            
+            loss = policy_loss + 0.5 * value_loss
             loss = loss / self.config.gradient_accumulation_steps
         
         # Backward pass
@@ -406,12 +436,17 @@ class DistributedTrainer:
         
         # Calculate accuracy
         with torch.no_grad():
-            predictions = torch.argmax(outputs['policy_logits'], dim=-1)
+            predictions = torch.argmax(policy_logits, dim=-1)
             accuracy = (predictions == labels).float().mean()
+            # Also track value accuracy
+            value_accuracy = 1.0 - torch.abs(values - rewards).mean()
         
         return {
             'loss': loss.item() * self.config.gradient_accumulation_steps,
+            'policy_loss': policy_loss.item(),
+            'value_loss': value_loss.item(),
             'accuracy': accuracy.item(),
+            'value_accuracy': value_accuracy.item(),
             'learning_rate': self.scheduler.get_last_lr()[0]
         }
     
@@ -514,7 +549,7 @@ class DistributedTrainer:
         
         # Training loop
         last_checkpoint_time = time.time()
-        accumulated_metrics = {'loss': 0.0, 'accuracy': 0.0, 'count': 0}
+        accumulated_metrics = {'loss': 0.0, 'accuracy': 0.0, 'policy_loss': 0.0, 'value_loss': 0.0, 'value_accuracy': 0.0, 'count': 0}
         
         logger.info(f"Training from step {self.step} to {self.config.max_steps}")
         logger.info(f"Time limit: {self.config.time_limit_hours} hours")
@@ -539,6 +574,9 @@ class DistributedTrainer:
                 # Accumulate metrics
                 accumulated_metrics['loss'] += metrics['loss']
                 accumulated_metrics['accuracy'] += metrics['accuracy']
+                accumulated_metrics['policy_loss'] += metrics['policy_loss']
+                accumulated_metrics['value_loss'] += metrics['value_loss']
+                accumulated_metrics['value_accuracy'] += metrics['value_accuracy']
                 accumulated_metrics['count'] += 1
                 
                 # Optimizer step
@@ -552,6 +590,9 @@ class DistributedTrainer:
                 if self.step % self.config.log_every == 0 and self.is_main_process():
                     avg_loss = accumulated_metrics['loss'] / accumulated_metrics['count']
                     avg_acc = accumulated_metrics['accuracy'] / accumulated_metrics['count']
+                    avg_policy_loss = accumulated_metrics['policy_loss'] / accumulated_metrics['count']
+                    avg_value_loss = accumulated_metrics['value_loss'] / accumulated_metrics['count']
+                    avg_value_acc = accumulated_metrics['value_accuracy'] / accumulated_metrics['count']
                     
                     elapsed = time.time() - self.start_time
                     remaining = self.get_time_remaining() / 3600
@@ -559,7 +600,10 @@ class DistributedTrainer:
                     logger.info(
                         f"Step {self.step}/{self.config.max_steps} | "
                         f"Loss: {avg_loss:.4f} | "
+                        f"P_Loss: {avg_policy_loss:.4f} | "
+                        f"V_Loss: {avg_value_loss:.4f} | "
                         f"Acc: {avg_acc:.4f} | "
+                        f"V_Acc: {avg_value_acc:.4f} | "
                         f"LR: {metrics['learning_rate']:.2e} | "
                         f"Time: {elapsed/3600:.1f}h | "
                         f"Remaining: {remaining:.1f}h"
@@ -568,7 +612,10 @@ class DistributedTrainer:
                     if not self.config.dry_run:
                         wandb.log({
                             'train/loss': avg_loss,
+                            'train/policy_loss': avg_policy_loss,
+                            'train/value_loss': avg_value_loss,
                             'train/accuracy': avg_acc,
+                            'train/value_accuracy': avg_value_acc,
                             'train/learning_rate': metrics['learning_rate'],
                             'step': self.step,
                             'epoch': self.epoch,
@@ -576,7 +623,7 @@ class DistributedTrainer:
                         })
                     
                     # Reset accumulated metrics
-                    accumulated_metrics = {'loss': 0.0, 'accuracy': 0.0, 'count': 0}
+                    accumulated_metrics = {'loss': 0.0, 'accuracy': 0.0, 'policy_loss': 0.0, 'value_loss': 0.0, 'value_accuracy': 0.0, 'count': 0}
                 
                 # Validation and checkpointing
                 if (self.step % self.config.eval_every == 0 or 
